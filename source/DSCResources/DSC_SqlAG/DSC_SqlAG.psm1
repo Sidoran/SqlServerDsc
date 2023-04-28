@@ -321,6 +321,7 @@ function Set-TargetResource
                 {
                     $EndpointHostName = $serverObject.NetName
                 }
+                # Create Availability Group Object
                 $newAvailabilityGroup = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityGroup -ArgumentList $serverObject, $Name
                 if ( $AutomatedBackupPreference )
                 {
@@ -344,7 +345,7 @@ function Set-TargetResource
                     $newAvailabilityGroup.HealthCheckTimeout = $HealthCheckTimeout
                 }
                 # Create new replica object
-                $newReplica = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityReplica -ArgumentList $availabilityGroup, $serverObject.DomainInstanceName
+                $newReplica = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityReplica -ArgumentList $newAvailabilityGroup, $serverObject.DomainInstanceName
                 $newReplica.AvailabilityMode = $AvailabilityMode
                 $newReplica.EndpointUrl = "TCP://$($EndpointHostName):$($endpoint.Protocol.Tcp.ListenerPort)"
                 $newReplica.FailoverMode = $FailoverMode
@@ -369,11 +370,22 @@ function Set-TargetResource
                     $newReplica.SeedingMode = $SeedingMode
                 }
                 # Create the Availability Group Replica
-                Write-Verbose -Message (
-                    $script:localizedData.CreateAvailabilityGroupReplica -f $newReplica.Name, $Name, $InstanceName
-                )
-                New-AvailabilityGroupReplica -AvailabilityGroupReplica $newAvailabilityGroupReplica
+                try
+                {
+                    Write-Verbose -Message (
+                        $script:localizedData.CreateAvailabilityGroupReplica -f $newReplicaParams.Name, $Name, $InstanceName
+                    )
 
+                    $newReplica.Create()
+                    $newAvailabilityGroup.AvailabilityReplicas.Add($newReplica)
+                }
+                catch
+                {
+                    $errorMessage = $script:localizedData.FailedCreateAvailabilityGroupReplica -f $newReplicaParams.Name, $InstanceName
+                    New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
+                }
+
+                # Create the Availability Group
                 try
                 {
                     Write-Verbose -Message (
