@@ -345,7 +345,6 @@ function Set-TargetResource
                 }
                 # Create new replica object
                 $newReplica = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityReplica -ArgumentList $availabilityGroup, $serverObject.DomainInstanceName
-                $newReplica.Version = $sqlMajorVersion
                 $newReplica.AvailabilityMode = $AvailabilityMode
                 $newReplica.EndpointUrl = "TCP://$($EndpointHostName):$($endpoint.Protocol.Tcp.ListenerPort)"
                 $newReplica.FailoverMode = $FailoverMode
