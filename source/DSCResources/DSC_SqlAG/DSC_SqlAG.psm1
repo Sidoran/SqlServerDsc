@@ -93,16 +93,7 @@ function Get-TargetResource
             $alwaysOnAvailabilityGroupResource.Add('BasicAvailabilityGroup', $availabilityGroup.BasicAvailabilityGroup)
             $alwaysOnAvailabilityGroupResource.Add('DatabaseHealthTrigger', $availabilityGroup.DatabaseHealthTrigger)
             $alwaysOnAvailabilityGroupResource.Add('DtcSupportEnabled', $availabilityGroup.DtcSupportEnabled)
-            # Microsoft.SqlServer.Management.Smo.Server from Connect-SQL supports the SeedingMode for SQL 2016 and higher, but New-SqlAvailabilityReplica may not.
-            # Will setting SeedingMode as $null to match ability of Microsoft.SqlServer.Management.Smo.Server and New-SqlAvailabilityReplica
-            if ( (Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode') )
-            {
-                $alwaysOnAvailabilityGroupResource.Add('SeedingMode', $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName].SeedingMode)
-            }
-            else
-            {
-                $alwaysOnAvailabilityGroupResource.Add('SeedingMode', $null)
-            }
+            $alwaysOnAvailabilityGroupResource.Add('SeedingMode', $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName].SeedingMode)
         }
     }
 
@@ -330,89 +321,66 @@ function Set-TargetResource
                 {
                     $EndpointHostName = $serverObject.NetName
                 }
-
-                # Set up the parameters to create the AG Replica
-                $newReplicaParams = @{
-                    Name             = $serverObject.DomainInstanceName
-                    Version          = $sqlMajorVersion
-                    AsTemplate       = $true
-                    AvailabilityMode = $AvailabilityMode
-                    EndpointUrl      = "TCP://$($EndpointHostName):$($endpoint.Protocol.Tcp.ListenerPort)"
-                    FailoverMode     = $FailoverMode
-                }
-
-                if ( $BackupPriority )
-                {
-                    $newReplicaParams.Add('BackupPriority', $BackupPriority)
-                }
-
-                if ( $ConnectionModeInPrimaryRole )
-                {
-                    $newReplicaParams.Add('ConnectionModeInPrimaryRole', $ConnectionModeInPrimaryRole)
-                }
-
-                if ( $ConnectionModeInSecondaryRole )
-                {
-                    $newReplicaParams.Add('ConnectionModeInSecondaryRole', $ConnectionModeInSecondaryRole)
-                }
-
-                if ( ( $sqlMajorVersion -ge 13 ) -and (Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode') )
-                {
-                    $newReplicaParams.Add('SeedingMode', $SeedingMode)
-                }
-
-                # Create the new replica object
-                try
-                {
-                    Write-Verbose -Message (
-                        $script:localizedData.CreateAvailabilityGroupReplica -f $newReplicaParams.Name, $Name, $InstanceName
-                    )
-
-                    $primaryReplica = New-SqlAvailabilityReplica @newReplicaParams -ErrorAction Stop
-                }
-                catch
-                {
-                    $errorMessage = $script:localizedData.FailedCreateAvailabilityGroupReplica -f $newReplicaParams.Name, $InstanceName
-                    New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
-                }
-
-                # Set up the parameters for the new availability group
-                $newAvailabilityGroupParams = @{
-                    InputObject         = $serverObject
-                    Name                = $Name
-                    AvailabilityReplica = $primaryReplica
-                }
-
+                $newAvailabilityGroup = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityGroup -ArgumentList $serverObject, $Name
                 if ( $AutomatedBackupPreference )
                 {
-                    $newAvailabilityGroupParams.Add('AutomatedBackupPreference', $AutomatedBackupPreference)
+                    $newAvailabilityGroup.AutomatedBackupPreference = $AutomatedBackupPreference
                 }
 
                 if ( $sqlMajorVersion -ge 13 )
                 {
-                    $newAvailabilityGroupParams.Add('BasicAvailabilityGroup', $BasicAvailabilityGroup)
-                    $newAvailabilityGroupParams.Add('DatabaseHealthTrigger', $DatabaseHealthTrigger)
-                    $newAvailabilityGroupParams.Add('DtcSupportEnabled', $DtcSupportEnabled)
+                    $newAvailabilityGroup.BasicAvailabilityGroup = $BasicAvailabilityGroup
+                    $newAvailabilityGroup.DatabaseHealthTrigger = $DatabaseHealthTrigger
+                    $newAvailabilityGroup.DtcSupportEnabled = $DtcSupportEnabled
                 }
 
                 if ( $FailureConditionLevel )
                 {
-                    $newAvailabilityGroupParams.Add('FailureConditionLevel', $FailureConditionLevel)
+                    $newAvailabilityGroup.FailureConditionLevel = $FailureConditionLevel
                 }
 
                 if ( $HealthCheckTimeout )
                 {
-                    $newAvailabilityGroupParams.Add('HealthCheckTimeout', $HealthCheckTimeout)
+                    $newAvailabilityGroup.HealthCheckTimeout = $HealthCheckTimeout
+                }
+                # Create new replica object
+                $newReplica = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityReplica -ArgumentList $availabilityGroup, $serverObject.DomainInstanceName
+                $newReplica.Version = $sqlMajorVersion
+                $newReplica.AvailabilityMode = $AvailabilityMode
+                $newReplica.EndpointUrl = "TCP://$($EndpointHostName):$($endpoint.Protocol.Tcp.ListenerPort)"
+                $newReplica.FailoverMode = $FailoverMode
+
+                if ( $BackupPriority )
+                {
+                    $newReplica.BackupPriority = $BackupPriority
                 }
 
-                # Create the Availability Group
+                if ( $ConnectionModeInPrimaryRole )
+                {
+                    $newReplica.ConnectionModeInPrimaryRole = $ConnectionModeInPrimaryRole
+                }
+
+                if ( $ConnectionModeInSecondaryRole )
+                {
+                    $newReplica.ConnectionModeInSecondaryRole = $ConnectionModeInSecondaryRole
+                }
+
+                if ( $sqlMajorVersion -ge 13 )
+                {
+                    $newReplica.SeedingMode = $SeedingMode
+                }
+                # Create the Availability Group Replica
+                Write-Verbose -Message (
+                    $script:localizedData.CreateAvailabilityGroupReplica -f $newReplica.Name, $Name, $InstanceName
+                )
+                New-AvailabilityGroupReplica -AvailabilityGroupReplica $newAvailabilityGroupReplica
+
                 try
                 {
                     Write-Verbose -Message (
                         $script:localizedData.CreateAvailabilityGroup -f $Name, $InstanceName
                     )
-
-                    New-SqlAvailabilityGroup @newAvailabilityGroupParams -ErrorAction Stop
+                    $newAvailabilityGroup.Create()
                 }
                 catch
                 {
@@ -420,7 +388,6 @@ function Set-TargetResource
                     New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
                 }
             }
-            # Otherwise let's check each of the parameters passed and update the Availability Group accordingly
             else
             {
                 Write-Verbose -Message (
@@ -523,11 +490,8 @@ function Set-TargetResource
 
                 if ( ( $submittedParameters -contains 'SeedingMode' ) -and ( $sqlMajorVersion -ge 13 ) -and ( $SeedingMode -ne $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName].SeedingMode )  )
                 {
-                    if ( (Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode') )
-                    {
-                        $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName].SeedingMode = $SeedingMode
-                        Update-AvailabilityGroupReplica -AvailabilityGroupReplica $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName]
-                    }
+                    $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName].SeedingMode = $SeedingMode
+                    Update-AvailabilityGroupReplica -AvailabilityGroupReplica $availabilityGroup.AvailabilityReplicas[$serverObject.DomainInstanceName]
                 }
             }
         }
@@ -747,7 +711,6 @@ function Test-TargetResource
             <#
                 Add properties compatible with SQL Server 2016 or later versions
                 DtcSupportEnabled is enabled at the creation of the Availability Group only, hence it will not be checked in this block
-                SeedingMode should be checked only in case if New-SqlAvailabilityReplica support the SeedingMode parameter
             #>
             if ( $sqlMajorVersion -ge 13 )
             {
