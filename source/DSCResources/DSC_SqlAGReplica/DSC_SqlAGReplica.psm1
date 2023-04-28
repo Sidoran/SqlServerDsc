@@ -111,18 +111,7 @@ function Get-TargetResource
             $alwaysOnAvailabilityGroupReplicaResource.EndpointUrl = $availabilityGroupReplica.EndpointUrl
             $alwaysOnAvailabilityGroupReplicaResource.ReadOnlyRoutingConnectionUrl = $availabilityGroupReplica.ReadOnlyRoutingConnectionUrl
             $alwaysOnAvailabilityGroupReplicaResource.ReadOnlyRoutingList = $availabilityGroupReplica.ReadOnlyRoutingList
-
-            if (  $sqlMajorVersion -ge 13  )
-            {
-                if ( (Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode') )
-                {
-                    $alwaysOnAvailabilityGroupReplicaResource.'SeedingMode' = $availabilityGroupReplica.SeedingMode
-                }
-                else
-                {
-                    $alwaysOnAvailabilityGroupReplicaResource.'SeedingMode' = $null
-                }
-            }
+            $alwaysOnAvailabilityGroupReplicaResource.SeedingMode = $availabilityGroupReplica.SeedingMode
         }
     }
 
@@ -431,11 +420,8 @@ function Set-TargetResource
 
                     if ( ( $submittedParameters -contains 'SeedingMode' ) -and ( $sqlMajorVersion -ge 13 ) -and ( $SeedingMode -ne $availabilityGroupReplica.SeedingMode ) )
                     {
-                        if ((Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode'))
-                        {
                             $availabilityGroupReplica.SeedingMode = $SeedingMode
                             $availabilityGroupReplicaUpdatesRequired = $true
-                        }
                     }
 
                     if ( $availabilityGroupReplicaUpdatesRequired )
@@ -465,59 +451,43 @@ function Set-TargetResource
                     # Build the endpoint URL
                     $endpointUrl = "TCP://$($EndpointHostName):$($endpointPort)"
 
-                    $newAvailabilityGroupReplicaParams = @{
-                        Name             = $Name
-                        InputObject      = $primaryReplicaAvailabilityGroup
-                        AvailabilityMode = $AvailabilityMode
-                        EndpointUrl      = $endpointUrl
-                        FailoverMode     = $FailoverMode
-                        Verbose          = $false
-                    }
+                    $newAvailabilityGroupReplica = New-Object Microsoft.SqlServer.Management.Smo.AvailabilityReplica -ArgumentList $availabilityGroup, $Name
+                    $newAvailabilityGroupReplica.AvailabilityMode = $AvailabilityMode
+                    $newAvailabilityGroupReplica.EndpointUrl = $endpointUrl
+                    $newAvailabilityGroupReplica.FailoverMode = $FailoverMode
 
                     if ( $BackupPriority )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('BackupPriority', $BackupPriority)
+                        $newAvailabilityGroupReplica.BackupPriority = $BackupPriority
                     }
 
                     if ( $ConnectionModeInPrimaryRole )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('ConnectionModeInPrimaryRole', $ConnectionModeInPrimaryRole)
+                        $newAvailabilityGroupReplica.ConnectionModeInPrimaryRole = $ConnectionModeInPrimaryRole
                     }
 
                     if ( $ConnectionModeInSecondaryRole )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('ConnectionModeInSecondaryRole', $ConnectionModeInSecondaryRole)
+                        $newAvailabilityGroupReplica.ConnectionModeInSecondaryRole = $ConnectionModeInSecondaryRole
                     }
 
                     if ( $ReadOnlyRoutingConnectionUrl )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('ReadOnlyRoutingConnectionUrl', $ReadOnlyRoutingConnectionUrl)
+                        $newAvailabilityGroupReplica.ReadOnlyRoutingConnectionUrl = $ReadOnlyRoutingConnectionUrl
                     }
 
                     if ( $ReadOnlyRoutingList )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('ReadOnlyRoutingList', $ReadOnlyRoutingList)
+                        $newAvailabilityGroupReplica.ReadOnlyRoutingList = ReadOnlyRoutingList
                     }
 
-                    if ( ( $sqlMajorVersion -ge 13 ) -and (Get-Command -Name 'New-SqlAvailabilityReplica').Parameters.ContainsKey('SeedingMode') )
+                    if ( $sqlMajorVersion -ge 13 )
                     {
-                        $newAvailabilityGroupReplicaParams.Add('SeedingMode', $SeedingMode)
+                        $newAvailabilityGroupReplica.SeedingMode = $SeedingMode
                     }
 
                     # Create the Availability Group Replica
-                    try
-                    {
-                        Write-Verbose -Message (
-                            $script:localizedData.PrepareAvailabilityReplica -f $Name, $AvailabilityGroupName, $InstanceName
-                        )
-
-                        $availabilityGroupReplica = New-SqlAvailabilityReplica @newAvailabilityGroupReplicaParams
-                    }
-                    catch
-                    {
-                        $errorMessage = $script:localizedData.FailedCreateAvailabilityGroupReplica -f $Name, $AvailabilityGroupName, $InstanceName
-                        New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
-                    }
+                    New-AvailabilityGroupReplica -AvailabilityGroupReplica $newAvailabilityGroupReplica
 
                     # Join the Availability Group Replica to the Availability Group
                     try
@@ -526,7 +496,7 @@ function Set-TargetResource
                             $script:localizedData.JoinAvailabilityGroup -f $Name, $AvailabilityGroupName, $InstanceName
                         )
 
-                        Join-SqlAvailabilityGroup -Name $AvailabilityGroupName -InputObject $serverObject | Out-Null
+                        $availabilityGroup.AvailabilityReplicas.Add($newAvailabilityGroupReplica) | Out-Null
                     }
                     catch
                     {
