@@ -486,9 +486,19 @@ function Set-TargetResource
                         $newAvailabilityGroupReplica.SeedingMode = $SeedingMode
                     }
 
-                    # Create the Availability Group Replica
-                    New-AvailabilityGroupReplica -AvailabilityGroupReplica $newAvailabilityGroupReplica
-
+                    # Create new Availability Group Replica
+                    try
+                    {
+                        Write-Verbose -Message (
+                            $script:localizedData.CreateAvailabilityGroupReplica -f $newAvailabilityGroupReplica.Name, $Name, $InstanceName
+                        )
+                        $newAvailabilityGroupReplica.Create()
+                    }
+                    catch
+                    {
+                        $errorMessage = $script:localizedData.FailedCreateAvailabilityGroupReplica -f $newAvailabilityGroupReplica.Name, $Name, $InstanceName
+                        New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
+                    }
                     # Join the Availability Group Replica to the Availability Group
                     try
                     {
