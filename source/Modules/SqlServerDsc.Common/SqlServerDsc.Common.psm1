@@ -1337,39 +1337,6 @@ function Update-AvailabilityGroupReplica
 
 <#
     .SYNOPSIS
-        Executes the create method on an Availability Group Replica object.
-
-    .PARAMETER AvailabilityGroupReplica
-        The Availability Group Replica object that must be created.
-#>
-function New-AvailabilityGroupReplica
-{
-    param
-    (
-        [Parameter(Mandatory = $true)]
-        [Microsoft.SqlServer.Management.Smo.AvailabilityReplica]
-        $AvailabilityGroupReplica
-    )
-
-    try
-    {
-        $originalErrorActionPreference = $ErrorActionPreference
-        $ErrorActionPreference = 'Stop'
-        $AvailabilityGroupReplica.Create()
-    }
-    catch
-    {
-        $errorMessage = $script:localizedData.FailedCreateAvailabilityGroupReplica -f $AvailabilityGroupReplica.Name
-        New-InvalidOperationException -Message $errorMessage -ErrorRecord $_
-    }
-    finally
-    {
-        $ErrorActionPreference = $originalErrorActionPreference
-    }
-}
-
-<#
-    .SYNOPSIS
         Impersonates a login and determines whether required permissions are present.
 
     .PARAMETER ServerName
